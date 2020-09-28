@@ -15,6 +15,24 @@ go install
 ```
 
 # Examples
+
+Export monitors using tags:
+```
+DATADOG_API_KEY=xxx DATADOG_APP_KEY=xxx./dd2tf monitors --action export --tags team:srt,env:qa
+```
+
+Export monitors using ids:
+```
+DATADOG_API_KEY=xxx DATADOG_APP_KEY=xxx ./dd2tf monitors --action export --ids <ids>
+```
+
+Export all monitors:
+```
+DATADOG_API_KEY=xxx DATADOG_APP_KEY=xxx ./dd2tf monitors --action export --all
+```
+
+# Original commands.  Note: currently in a broken state
+
 Export all dashboards:
 ```bash
 DATADOG_API_KEY=xxx DATADOG_APP_KEY=xxx ./dd2tf dashboards --all

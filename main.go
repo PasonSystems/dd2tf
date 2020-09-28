@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"text/template"
 
 	log "github.com/sirupsen/logrus"
@@ -190,7 +189,7 @@ func main() {
 
 					}
 					monitor := fullElem.(*datadog.Monitor)
-					if !strings.Contains(element.d.getName(), " - Terraform") && (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
+					if (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
 						element.renderElement(fullElem, config)
 					}
 				}
@@ -204,7 +203,7 @@ func main() {
 
 					}
 					monitor := fullElem.(*datadog.Monitor)
-					if !strings.Contains(element.d.getName(), " - Terraform") && (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
+					if (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
 						found := true
 						tm := make(map[string]bool)
 						for _, tag := range subcommandOpts.tags {
