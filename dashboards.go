@@ -25,15 +25,3 @@ func (d Dashboard) getName() string {
 func (d Dashboard) String() string {
 	return d.getName()
 }
-
-func (d Dashboard) getAllElements(client datadog.Client) ([]Item, error) {
-	var ids []Item
-	dashboards, err := client.GetDashboards()
-	if err != nil {
-		return ids, err
-	}
-	for _, elem := range dashboards {
-		ids = append(ids, Item{id: *elem.Id, d: Dashboard{}})
-	}
-	return ids, nil
-}

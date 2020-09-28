@@ -1,17 +1,21 @@
-resource "datadog_monitor" "dd_{{ .Id }}" {
+resource "datadog_monitor" "ddm{{ .Id }}" {
   name               = "{{ .Name }}"
   type               = "{{ .Type }}"
   {{- if .Tags }}
   tags               = [{{range .Tags}}"{{.}}",{{end}}]
   {{- end }}
+  
   message            = <<EOT
 {{ .Message }}
 EOT
+
   escalation_message = <<EOT
 {{ .Options.EscalationMessage }}
 EOT
 
-  query = {{ .Query | escapeCharacters }}
+  query = <<EOT
+  {{ .Query }}
+EOT
 
   {{- with .Options }}
   {{- if .NotifyNoData }}
@@ -38,6 +42,12 @@ EOT
   {{- if .EvaluationDelay }}
   evaluation_delay = {{ .EvaluationDelay }}
   {{- end }}
+  {{- if .NoDataTimeframe }}
+  no_data_timeframe = {{ .NoDataTimeframe }}
+  {{- end }}
+  {{- if .Locked }}
+  locked = {{ .Locked }}
+  {{- end }}
 
   {{- if .Thresholds }}
   {{- with .Thresholds }}
@@ -61,5 +71,8 @@ EOT
   {{- end }}
   {{- end }}
   {{- end }}
+  lifecycle {
+    ignore_changes = [silenced]
+  }
 
 }

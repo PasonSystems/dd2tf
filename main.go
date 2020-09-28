@@ -5,10 +5,12 @@ package main
 import (
 	"bufio"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"os"
 	"strconv"
+	"strings"
 	"text/template"
+
+	log "github.com/sirupsen/logrus"
 
 	flag "github.com/spf13/pflag"
 	"github.com/zorkian/go-datadog-api"
@@ -22,11 +24,13 @@ type LocalConfig struct {
 }
 
 var config = LocalConfig{
-	components: []DatadogElement{Dashboard{}, Monitor{}, ScreenBoard{}},
+	components: []DatadogElement{Monitor{}},
 }
 
 type DatadogElement interface {
-	getElement(client datadog.Client, i int) (interface{}, error)
+	getElementById(client datadog.Client, i int) (interface{}, error)
+	getElementByTags(client datadog.Client, t []string) ([]Item, error)
+	deleteElement(client datadog.Client, i int) error
 	getAsset() string
 	getName() string
 	getAllElements(client datadog.Client) ([]Item, error)
@@ -38,7 +42,7 @@ type Item struct {
 }
 
 func (i *Item) getElement(config LocalConfig) (interface{}, error) {
-	item, err := i.d.getElement(config.client, i.id)
+	item, err := i.d.getElementById(config.client, i.id)
 	if err != nil {
 		log.Debugf("Error while getting element %v", i.id)
 		log.Fatal(err)
@@ -79,15 +83,23 @@ func escapeCharacters(line string) string {
 }
 
 type SecondaryOptions struct {
-	ids   []int
-	files bool
-	all   bool
-	debug bool
+	action string
+	ids    []int
+	mtype  string
+	tags   []string
+	force  bool
+	files  bool
+	all    bool
+	debug  bool
 }
 
 func NewSecondaryOptions(cmd *flag.FlagSet) *SecondaryOptions {
 	options := &SecondaryOptions{}
+	cmd.StringVar(&options.action, "action", "", "What to do")
+	cmd.StringVar(&options.mtype, "type", "", "Monitor type")
 	cmd.IntSliceVar(&options.ids, "ids", []int{}, "IDs of the elements to fetch.")
+	cmd.StringSliceVar(&options.tags, "tags", []string{}, "Tags of the elements to fetch.")
+	cmd.BoolVar(&options.force, "force", false, "Dry run")
 	cmd.BoolVar(&options.all, "all", false, "Export all available elements.")
 	cmd.BoolVar(&options.files, "files", false, "Save each element into a separate file.")
 	cmd.BoolVar(&options.debug, "debug", false, "Enable debug output.")
@@ -96,8 +108,8 @@ func NewSecondaryOptions(cmd *flag.FlagSet) *SecondaryOptions {
 
 func executeLogic(opts *SecondaryOptions, config *LocalConfig, component DatadogElement) {
 	config.files = opts.files //TODO: get rid of this ugly hack
-	if (len(opts.ids) == 0) && (opts.all == false) {
-		log.Fatal("Either --ids or --all should be specified")
+	if (len(opts.ids) == 0) && (opts.all == false) && (len(opts.tags) == 0) {
+		log.Fatal("Either --ids or --all or --tags should be specified")
 	} else if opts.all == true {
 		allElements, err := component.getAllElements(config.client)
 		if err != nil {
@@ -105,11 +117,19 @@ func executeLogic(opts *SecondaryOptions, config *LocalConfig, component Datadog
 		}
 		config.items = allElements
 		log.Debugf("Exporting all elements: %v", allElements)
-	} else {
+	} else if len(opts.ids) > 0 {
 		log.Debug("Exporting selected elements")
 		for _, item := range opts.ids {
 			config.items = append(config.items, Item{id: item, d: component})
 		}
+	} else if len(opts.tags) > 0 {
+		log.Debug(opts.tags)
+		allElements, err := component.getElementByTags(config.client, opts.tags)
+		if err != nil {
+			log.Fatal(err)
+		}
+		config.items = allElements
+		log.Debugf("Exporting all elements: %v", allElements)
 	}
 }
 
@@ -162,13 +182,52 @@ func main() {
 				}
 				executeLogic(subcommandOpts, &config, comp)
 			}
-			for _, element := range config.items {
-				log.Debugf("Exporting element %v", element.id)
-				fullElem, err := element.getElement(config)
-				if err != nil {
-					log.Fatal(err)
+			if subcommandOpts.action == "export" {
+				for _, element := range config.items {
+					log.Debugf("Exporting element %v", element.id)
+					fullElem, err := element.getElement(config)
+					if err != nil {
+
+					}
+					monitor := fullElem.(*datadog.Monitor)
+					if !strings.Contains(element.d.getName(), " - Terraform") && (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
+						element.renderElement(fullElem, config)
+					}
 				}
-				element.renderElement(fullElem, config)
+			} else if subcommandOpts.action == "delete" {
+				if !subcommandOpts.force {
+					fmt.Println("Dry run")
+				}
+				for _, element := range config.items {
+					fullElem, err := element.getElement(config)
+					if err != nil {
+
+					}
+					monitor := fullElem.(*datadog.Monitor)
+					if !strings.Contains(element.d.getName(), " - Terraform") && (subcommandOpts.mtype == "" || *monitor.Type == subcommandOpts.mtype) {
+						found := true
+						tm := make(map[string]bool)
+						for _, tag := range subcommandOpts.tags {
+							tm[tag] = false
+						}
+						for _, tag := range monitor.Tags {
+							tm[tag] = true
+						}
+						for _, tag := range tm {
+							if !tag {
+								found = false
+								break
+							}
+						}
+						if found && subcommandOpts.force {
+							fmt.Printf("Deleting element %v\n", element.id)
+							comp.deleteElement(config.client, element.id)
+						} else if found {
+							fmt.Printf("Will delete element %v\n", element.id)
+						}
+					}
+				}
+				log.Debugf("Deleted %v", len(config.items))
 			}
 			os.Exit(0)
 
